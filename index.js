@@ -2,6 +2,7 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 require("dotenv").config();
 
+// Tableau contenant l'ID des salons vocaux où la vérification de la caméra s'applique
 const ENFORCED_CHANNEL_IDS = [
   "1448775108243226736"
 ];
