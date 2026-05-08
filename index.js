@@ -1,14 +1,11 @@
-// index.js
 const { Client, GatewayIntentBits } = require("discord.js");
 require("dotenv").config();
 
-// Tableau contenant l'ID des salons vocaux où la vérification de la caméra s'applique
 const ENFORCED_CHANNEL_IDS = [
   "1448775108243226736"
 ];
 
-// Temps donné aux membres pour allumer leur caméra (3 secondes)
-const GRACE_PERIOD_MS = 3000; // 3 secondes
+const GRACE_PERIOD_MS = 3000;
 
 const client = new Client({
   intents: [
@@ -22,19 +19,15 @@ client.once("ready", () => {
   console.log(`✅ Cameraman connecté en tant que ${client.user.tag}`);
 });
 
-// Fonction : vérifier si la caméra est activée
 function hasCameraOn(voiceState) {
   if (!voiceState) return false;
-
   if (typeof voiceState.selfVideo === "boolean") {
     return voiceState.selfVideo;
   }
-
   const vs = voiceState.member?.voice;
   if (vs && typeof vs.selfVideo === "boolean") {
     return vs.selfVideo;
   }
-
   return false;
 }
 
@@ -49,28 +42,31 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
   if (!ENFORCED_CHANNEL_IDS.includes(after)) return;
 
   const justJoined = before !== after || before === null;
-  if (!justJoined) return;
+  const justTurnedOffCam = !justJoined && oldState.selfVideo === true && newState.selfVideo === false;
 
-  console.log(`${member.user.tag} a rejoint le vocal. Vérification cam...`);
+  if (!justJoined && !justTurnedOffCam) return;
 
-  setTimeout(async () => {
-    const refreshed = await member.guild.members.fetch(member.id).catch(() => null);
-    if (!refreshed) return;
+  if (justJoined) {
+    console.log(`${member.user.tag} a rejoint le vocal. Vérification cam...`);
+    setTimeout(async () => {
+      const refreshed = await member.guild.members.fetch(member.id).catch(() => null);
+      if (!refreshed) return;
+      const state = refreshed.voice;
+      if (!state || !state.channelId) return;
+      if (!ENFORCED_CHANNEL_IDS.includes(state.channelId)) return;
 
-    const state = refreshed.voice;
+      if (!hasCameraOn(state)) {
+        console.log(`🚫 ${refreshed.user.tag} n'a pas activé sa cam → déconnexion.`);
+        await state.setChannel(null).catch(() => null);
+      } else {
+        console.log(`✅ ${refreshed.user.tag} a activé sa caméra.`);
+      }
+    }, GRACE_PERIOD_MS);
 
-    if (!state || !state.channelId) return;
-    if (!ENFORCED_CHANNEL_IDS.includes(state.channelId)) return;
-
-    const camOn = hasCameraOn(state);
-
-    if (!camOn) {
-      console.log(`🚫 ${refreshed.user.tag} n'a pas activé sa cam → déconnexion.`);
-      await state.setChannel(null).catch(() => null);
-    } else {
-      console.log(`✅ ${refreshed.user.tag} a activé sa caméra.`);
-    }
-  }, GRACE_PERIOD_MS);
+  } else if (justTurnedOffCam) {
+    console.log(`🚫 ${member.user.tag} a éteint sa cam → déconnexion.`);
+    await newState.setChannel(null).catch(() => null);
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
